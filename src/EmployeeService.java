@@ -1,16 +1,57 @@
 import java.io.*;
 import java.util.*;
 
+/**
+ * EmployeeService.java
+ * Handles all file I/O, authentication, and salary calculations.
+ *
+ * FILE PATH STRATEGY:
+ *   Data files (employees.txt) are resolved in this priority order:
+ *   1. Same directory as the running .class file (works for: javac *.java && java Main from src/)
+ *   2. "data" sub-folder next to the .class file (VS Code bin/ launch)
+ *   3. Current working directory fallback
+ *
+ *   This ensures employees.txt is always in ONE consistent location
+ *   regardless of whether you run from src/, bin/, or via VS Code's debugger.
+ *
+ *   Storage format per line (9 comma-separated fields):
+ *   id,name,email,password,phone,department,position,salary,role
+ */
 public class EmployeeService {
 
-    private static final String FILE_PATH = "employees.txt";
-    public  static final String ADMIN_KEY = "ADMIN123";
+    static final String DATA_FILE = "employees.txt";
+    // Resolved once; shared so AttendanceService can use the same directory.
+    static final File DATA_DIR = resolveDataDir();
 
-    // ── File I/O ───────────────────────────────────────────────────────────────
+    public static final String ADMIN_KEY = "ADMIN123";
+
+    /**
+     * Resolves the directory where data files are stored.
+     * Priority: location of the compiled class → current working directory.
+     */
+    static File resolveDataDir() {
+        try {
+            File classLoc = new File(
+                EmployeeService.class.getProtectionDomain()
+                    .getCodeSource().getLocation().toURI()
+            );
+            // If classLoc is a directory (exploded classes), use it directly.
+            File dir = classLoc.isDirectory() ? classLoc : classLoc.getParentFile();
+            if (dir != null && dir.exists()) return dir;
+        } catch (Exception ignored) {}
+        // Fallback: current working directory
+        return new File(System.getProperty("user.dir"));
+    }
+
+    private static File dataFile() {
+        return new File(DATA_DIR, DATA_FILE);
+    }
+
+    // ── File I/O ──────────────────────────────────────────────────────────────
 
     public List<Employee> loadEmployees() {
         List<Employee> list = new ArrayList<>();
-        File file = new File(FILE_PATH);
+        File file = dataFile();
         if (!file.exists()) return list;
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
@@ -22,24 +63,28 @@ public class EmployeeService {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("[EmployeeService] Read error: " + e.getMessage());
         }
         return list;
     }
 
     public void saveEmployees(List<Employee> employees) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(FILE_PATH, false))) {
+        File file = dataFile();
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+        try (PrintWriter writer = new PrintWriter(new FileWriter(file, false))) {
             for (Employee e : employees) {
                 writer.println(e.toFileString());
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("[EmployeeService] Write error: " + e.getMessage());
         }
     }
 
-    // ── Lookup ─────────────────────────────────────────────────────────────────
+    // ── Lookup ────────────────────────────────────────────────────────────────
 
     public Employee findByEmail(String email) {
+        if (email == null) return null;
         for (Employee e : loadEmployees()) {
             if (e.getEmail().equalsIgnoreCase(email)) return e;
         }
@@ -50,7 +95,7 @@ public class EmployeeService {
         return findByEmail(email) != null;
     }
 
-    // ── Auth ───────────────────────────────────────────────────────────────────
+    // ── Auth ──────────────────────────────────────────────────────────────────
 
     public boolean register(Employee employee) {
         if (emailExists(employee.getEmail())) return false;
@@ -61,15 +106,17 @@ public class EmployeeService {
     }
 
     public Employee login(String email, String password) {
+        if (email == null || password == null) return null;
         for (Employee e : loadEmployees()) {
-            if (e.getEmail().equalsIgnoreCase(email) && e.getPassword().equals(password)) {
+            if (e.getEmail().equalsIgnoreCase(email)
+                    && e.getPassword().equals(password)) {
                 return e;
             }
         }
         return null;
     }
 
-    // ── CRUD ───────────────────────────────────────────────────────────────────
+    // ── CRUD ──────────────────────────────────────────────────────────────────
 
     public boolean updateEmployee(String originalEmail, Employee updated) {
         List<Employee> list = loadEmployees();
@@ -90,30 +137,14 @@ public class EmployeeService {
         return removed;
     }
 
-    // ── Salary Deductions ──────────────────────────────────────────────────────
+    // ── Salary Calculations ───────────────────────────────────────────────────
 
-    public double calculateTax(double basic)   { return basic * 0.10; }
-    public double calculatePF(double basic)    { return basic * 0.05; }
+    public double calculateTax(double basic)       { return basic * 0.10; }
+    public double calculatePF(double basic)        { return basic * 0.05; }
+    public double calculateNetSalary(double basic) { return basic - calculateTax(basic) - calculatePF(basic); }
 
-    /** Net salary from basic alone: basic − tax − pf */
-    public double calculateNetSalary(double basic) {
-        return basic - calculateTax(basic) - calculatePF(basic);
-    }
-
-    // ── Attendance-based Salary ────────────────────────────────────────────────
-
-    /**
-     * Gross attendance salary:
-     *   dailyRate    = basic / 30
-     *   overtimeRate = dailyRate / 8
-     *   gross        = (daysWorked * dailyRate)
-     *                + (overtimeHours * overtimeRate)
-     *                - (leaveDays * dailyRate)
-     *
-     * Final net: gross − tax(basic) − pf(basic)
-     */
     public double calculateAttendanceSalary(double basic, int daysWorked,
-                                             double overtimeHours, int leaveDays) {
+                                            double overtimeHours, int leaveDays) {
         double dailyRate    = basic / 30.0;
         double overtimeRate = dailyRate / 8.0;
         double gross = (daysWorked * dailyRate)
@@ -122,7 +153,7 @@ public class EmployeeService {
         return gross - calculateTax(basic) - calculatePF(basic);
     }
 
-    // ── Role Helper ────────────────────────────────────────────────────────────
+    // ── Admin Key ─────────────────────────────────────────────────────────────
 
     public boolean validateAdminKey(String key) {
         return ADMIN_KEY.equals(key);

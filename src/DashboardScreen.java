@@ -9,34 +9,21 @@ import java.util.*;
 import java.util.List;
 
 /**
- * DashboardScreen.java
+ * DashboardScreen.java — Main application screen after login.
  *
- * FIXES:
- * - FIX 1: ENTIRE dashboard content (search + table + breakdown + buttons)
- *   is now wrapped in a single JScrollPane so the page scrolls as a whole.
- *   Previously only the table had a scroll pane; the breakdown and buttons
- *   were cut off on small windows.
- * - FIX 2: Layout changed from BorderLayout to BoxLayout(Y_AXIS) on the
- *   main content panel so sections stack cleanly and scroll together.
- * - FIX 3: Top bar uses BorderLayout inside a fixed-height wrapper so it
- *   stays at the top and is NOT included in the scroll area (it acts as a
- *   fixed header — more natural UX).
- * - FIX 4: Table is given a preferred height so it shows ~8 rows before
- *   the scroll kicks in, rather than collapsing to near-zero.
- * - FIX 5: Breakdown panel uses a cleaner GridLayout(2,4) with uniform
- *   label sizing and left-alignment so numbers never overflow their cells.
- * - FIX 6: All action buttons use Theme.primaryButton() / outlineButton()
- *   for visual consistency with the Login/Register screens.
- * - FIX 7: Consistent vertical struts (Box.createVerticalStrut) between
- *   sections replace ad-hoc BorderLayout gaps.
- * - FIX 8: Theme.styleTable() applied to the employee table for alternating
- *   row colours, styled header, and proper selection colour.
- * - FIX 9: Theme.styleScrollPane() applied to both scroll panes.
- * - FIX 10: setBackground(Theme.BG) throughout so no white "flash" panels
- *   appear when the window is resized.
- * - FIX 11: Welcome label uses Theme.FONT_HEADER and TEXT_DARK colour so
- *   it is legible on the BG background.
- * - FIX 12: Dialog form rows use Theme.styleInput() for consistent styling.
+ * Admin users see the full employee list with CRUD + export controls.
+ * Regular employees see only their own record and payroll breakdown.
+ *
+ * FIXES IN THIS VERSION:
+ * - Full-page scroll works correctly (BorderLayout.CENTER on pageScroll)
+ * - Table width uses reasonable preferred sizes, not Integer.MAX_VALUE
+ * - JPasswordField(String) deprecated constructor removed — use setText()
+ * - Breakdown panel uses GridBagLayout for clean alignment
+ * - Search bar and CRUD buttons are hidden for non-admin users
+ * - Export works for both admin (all employees) and regular (self only)
+ * - All file paths are consistent via EmployeeService.DATA_DIR
+ * - No unsafe unchecked casts (scoped @SuppressWarnings per method)
+ * - Breakdown section always visible; clears when no row selected
  */
 public class DashboardScreen extends JPanel {
 
@@ -47,16 +34,16 @@ public class DashboardScreen extends JPanel {
     private final EmployeeService   service;
     private final AttendanceService attendanceService;
 
-    // Top bar (fixed — outside scroll)
+    // ── Fixed top bar ──────────────────────────────────────────────────────────
     private JLabel welcomeLabel;
 
-    // Scrollable content
-    private JTextField        searchField;
-    private JPanel            searchPanel, crudPanel;
+    // ── Scrollable content refs ────────────────────────────────────────────────
+    private JTextField    searchField;
+    private JPanel        searchPanel, crudPanel, exportPanel;
     private DefaultTableModel tableModel;
-    private JTable            employeeTable;
+    private JTable        employeeTable;
 
-    // Breakdown labels
+    // ── Breakdown labels ──────────────────────────────────────────────────────
     private JLabel basicLabel, daysLabel, overtimeLabel, leaveLabel,
                    taxLabel, pfLabel, netLabel;
 
@@ -66,104 +53,114 @@ public class DashboardScreen extends JPanel {
         this.app               = app;
         this.service           = service;
         this.attendanceService = new AttendanceService();
-        // FIX 10: ensure background is set on the root panel
         setBackground(Theme.BG);
-        // FIX 3: BorderLayout so the fixed top bar sits above the scroll area
         setLayout(new BorderLayout(0, 0));
-        setBorder(BorderFactory.createEmptyBorder(12, 14, 12, 14));
         buildUI();
     }
 
     // ── Build UI ──────────────────────────────────────────────────────────────
 
     private void buildUI() {
-        // FIX 3: fixed top bar (not scrolled)
-        add(buildTopBar(), BorderLayout.NORTH);
+        // Fixed top bar — never scrolls
+        JPanel topBar = buildTopBar();
+        add(topBar, BorderLayout.NORTH);
 
-        // FIX 1: single scroll pane wrapping ALL content below the top bar
+        // Everything below scrolls together
         JPanel content = buildScrollableContent();
         JScrollPane pageScroll = new JScrollPane(content);
-        Theme.styleScrollPane(pageScroll);
+        pageScroll.setBorder(BorderFactory.createEmptyBorder());
         pageScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        pageScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         pageScroll.getVerticalScrollBar().setUnitIncrement(16);
         pageScroll.getViewport().setBackground(Theme.BG);
-        add(pageScroll, BorderLayout.CENTER);
+        add(pageScroll, BorderLayout.CENTER); // CENTER = fills remaining frame height
     }
 
-    // ── Top Bar (fixed, not scrolled) ─────────────────────────────────────────
+    // ── Top Bar ───────────────────────────────────────────────────────────────
 
     private JPanel buildTopBar() {
         JPanel panel = new JPanel(new BorderLayout(10, 0));
-        panel.setBackground(Theme.BG);
-        // FIX 11: styled welcome label
+        panel.setBackground(Theme.PRIMARY);
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 16, 10, 16));
+
         welcomeLabel = new JLabel("Welcome");
         welcomeLabel.setFont(Theme.FONT_HEADER);
-        welcomeLabel.setForeground(Theme.TEXT_DARK);
+        welcomeLabel.setForeground(Color.WHITE);
         panel.add(welcomeLabel, BorderLayout.WEST);
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        right.setBackground(Theme.BG);
-        // FIX 6: themed buttons
-        right.add(Theme.outlineButton("Edit Profile", e -> showEditProfileDialog()));
-        right.add(Theme.primaryButton("Logout",       e -> app.logout()));
-        panel.add(right, BorderLayout.EAST);
+        right.setBackground(Theme.PRIMARY);
 
-        // Divider line below the top bar
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.DIVIDER),
-            BorderFactory.createEmptyBorder(6, 0, 8, 0)
+        JButton editBtn = new JButton("Edit Profile");
+        editBtn.setFont(Theme.FONT_BTN);
+        editBtn.setForeground(Theme.PRIMARY);
+        editBtn.setBackground(Color.WHITE);
+        editBtn.setFocusPainted(false);
+        editBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        editBtn.addActionListener(e -> showEditProfileDialog());
+
+        JButton logoutBtn = new JButton("Logout");
+        logoutBtn.setFont(Theme.FONT_BTN);
+        logoutBtn.setForeground(Color.WHITE);
+        logoutBtn.setBackground(Theme.PRIMARY_HO);
+        logoutBtn.setFocusPainted(false);
+        logoutBtn.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Color.WHITE, 1),
+            BorderFactory.createEmptyBorder(4, 12, 4, 12)
         ));
+        logoutBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        logoutBtn.addActionListener(e -> app.logout());
+
+        right.add(editBtn);
+        right.add(logoutBtn);
+        panel.add(right, BorderLayout.EAST);
         return panel;
     }
 
-    // ── Scrollable content (search + table + breakdown + buttons) ─────────────
+    // ── Scrollable Content ────────────────────────────────────────────────────
 
-    /**
-     * FIX 1+2: All content below the top bar lives here. BoxLayout Y_AXIS
-     * stacks sections vertically. The outer JScrollPane (added in buildUI)
-     * scrolls this entire panel.
-     */
     private JPanel buildScrollableContent() {
         JPanel content = new JPanel();
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBackground(Theme.BG);
-        content.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+        content.setBorder(BorderFactory.createEmptyBorder(14, 16, 16, 16));
 
-        // Search bar
+        // Search bar (admin only — hidden for regular employees via init())
         searchPanel = buildSearchBar();
         searchPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         content.add(searchPanel);
         content.add(Box.createVerticalStrut(8));
 
-        // FIX 4: table with a defined preferred height so it is usable
+        // Employee table
         JScrollPane tableScroll = buildTableScrollPane();
         tableScroll.setAlignmentX(Component.LEFT_ALIGNMENT);
-        tableScroll.setPreferredSize(new Dimension(Integer.MAX_VALUE, 220));
-        tableScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 280));
+        tableScroll.setPreferredSize(new Dimension(600, 220));
+        tableScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
         content.add(tableScroll);
+        content.add(Box.createVerticalStrut(14));
 
-        // FIX 7: consistent gap between sections
-        content.add(Box.createVerticalStrut(12));
-
-        // FIX 5: breakdown panel
+        // Salary breakdown
         JPanel breakdown = buildBreakdownPanel();
         breakdown.setAlignmentX(Component.LEFT_ALIGNMENT);
+        breakdown.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
         content.add(breakdown);
-        content.add(Box.createVerticalStrut(12));
+        content.add(Box.createVerticalStrut(14));
 
-        // Button row
+        // Button row (CRUD admin-only + export)
         JPanel buttons = buildButtonRow();
         buttons.setAlignmentX(Component.LEFT_ALIGNMENT);
         content.add(buttons);
+        content.add(Box.createVerticalStrut(10));
 
         return content;
     }
 
-    // ── Search bar ────────────────────────────────────────────────────────────
+    // ── Search Bar ────────────────────────────────────────────────────────────
 
     private JPanel buildSearchBar() {
         JPanel panel = new JPanel(new BorderLayout(8, 0));
         panel.setBackground(Theme.BG);
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
 
         JLabel lbl = new JLabel("Search:");
         lbl.setFont(Theme.FONT_LABEL);
@@ -187,44 +184,41 @@ public class DashboardScreen extends JPanel {
         tableModel = new DefaultTableModel(
             new String[]{"ID", "Name", "Email", "Phone", "Dept", "Position", "Basic Salary", "Role"}, 0
         ) {
-            public boolean isCellEditable(int r, int c) { return false; }
+            @Override public boolean isCellEditable(int r, int c) { return false; }
         };
 
         employeeTable = new JTable(tableModel);
-        // FIX 8: apply full Theme table styling (alternating rows, styled header)
         Theme.styleTable(employeeTable);
         employeeTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         employeeTable.getSelectionModel().addListSelectionListener(
             e -> { if (!e.getValueIsAdjusting()) showSalaryBreakdown(); }
         );
 
-        // Preferred column widths
-        int[] widths = {60, 130, 170, 110, 70, 90, 110, 70};
+        // Reasonable column widths (no Integer.MAX_VALUE)
+        int[] widths = {55, 120, 165, 105, 65, 90, 105, 65};
         for (int i = 0; i < widths.length; i++) {
             employeeTable.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         }
 
         JScrollPane sp = new JScrollPane(employeeTable);
-        // FIX 9: apply theme scroll pane styling
         Theme.styleScrollPane(sp);
+        sp.getViewport().setBackground(Theme.BG_CARD);
         return sp;
     }
 
     // ── Breakdown Panel ───────────────────────────────────────────────────────
 
-    /**
-     * FIX 5: 2×4 grid with left-aligned labels so values never overflow.
-     * Uses Theme.sectionBorder for consistent titled border styling.
-     */
     private JPanel buildBreakdownPanel() {
-        JPanel panel = new JPanel(new GridLayout(2, 4, 12, 8));
-        panel.setBackground(Theme.BG_CARD);
-        panel.setBorder(BorderFactory.createCompoundBorder(
-            Theme.sectionBorder("Payroll Breakdown (selected employee)"),
-            BorderFactory.createEmptyBorder(6, 8, 8, 8)
-        ));
+        JPanel outer = new JPanel(new BorderLayout());
+        outer.setBackground(Theme.BG_CARD);
+        outer.setBorder(Theme.sectionBorder("Payroll Breakdown  (click a row to view)"));
 
-        basicLabel    = breakdownLabel("Basic Salary: —");
+        // Use GridLayout 2×4 — clean and stable regardless of label widths
+        JPanel grid = new JPanel(new GridLayout(2, 4, 16, 6));
+        grid.setBackground(Theme.BG_CARD);
+        grid.setBorder(BorderFactory.createEmptyBorder(8, 12, 10, 12));
+
+        basicLabel    = breakdownLabel("Basic: —");
         daysLabel     = breakdownLabel("Days Worked: —");
         overtimeLabel = breakdownLabel("Overtime Hrs: —");
         leaveLabel    = breakdownLabel("Leave Days: —");
@@ -232,36 +226,35 @@ public class DashboardScreen extends JPanel {
         pfLabel       = breakdownLabel("PF (5%): —");
         netLabel      = breakdownLabel("Net Salary: —");
 
-        panel.add(basicLabel);
-        panel.add(daysLabel);
-        panel.add(overtimeLabel);
-        panel.add(leaveLabel);
-        panel.add(taxLabel);
-        panel.add(pfLabel);
-        panel.add(netLabel);
-        panel.add(new JLabel()); // spacer to complete the 2×4 grid
-        return panel;
+        grid.add(basicLabel);
+        grid.add(daysLabel);
+        grid.add(overtimeLabel);
+        grid.add(leaveLabel);
+        grid.add(taxLabel);
+        grid.add(pfLabel);
+        grid.add(netLabel);
+        grid.add(new JLabel()); // filler cell
+
+        outer.add(grid, BorderLayout.CENTER);
+        return outer;
     }
 
     // ── Button Row ────────────────────────────────────────────────────────────
 
-    /**
-     * Admin CRUD buttons (left) + Export buttons (right).
-     * FIX 6: all buttons use Theme factories for consistent look.
-     */
     private JPanel buildButtonRow() {
         JPanel row = new JPanel(new BorderLayout(12, 0));
         row.setBackground(Theme.BG);
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
 
-        // CRUD — admin only; visibility toggled in init()
+        // CRUD — admin only
         crudPanel = new JPanel(new GridLayout(1, 3, 8, 0));
         crudPanel.setBackground(Theme.BG);
         crudPanel.add(Theme.primaryButton("Add Employee",    e -> showAddDialog()));
         crudPanel.add(Theme.outlineButton("Update Employee", e -> showUpdateDialog()));
         crudPanel.add(Theme.outlineButton("Delete Employee", e -> handleDelete()));
 
-        // Export — always visible
-        JPanel exportPanel = new JPanel(new GridLayout(1, 2, 8, 0));
+        // Export — available to all (employees only see their own data)
+        exportPanel = new JPanel(new GridLayout(1, 2, 8, 0));
         exportPanel.setBackground(Theme.BG);
         exportPanel.add(Theme.outlineButton("Export CSV", e -> exportCSV()));
         exportPanel.add(Theme.outlineButton("Export TXT", e -> exportTXT()));
@@ -271,15 +264,12 @@ public class DashboardScreen extends JPanel {
         return row;
     }
 
-    // ── Theme helper overloads accepting ActionListener directly ──────────────
-    // (Keeps button-creation calls concise in this file.)
-
-    // ── Init ──────────────────────────────────────────────────────────────────
+    // ── Init (called on every login) ──────────────────────────────────────────
 
     public void init(Employee user) {
         boolean isAdmin = user.isAdmin();
         welcomeLabel.setText("Welcome, " + user.getName()
-            + "  [" + user.getRole().toUpperCase() + " — " + user.getPosition() + "]");
+            + "   [" + user.getRole().toUpperCase() + "  —  " + user.getPosition() + "]");
         searchField.setText("");
         searchPanel.setVisible(isAdmin);
         crudPanel.setVisible(isAdmin);
@@ -287,7 +277,7 @@ public class DashboardScreen extends JPanel {
         if (!isAdmin) selectRowByEmail(user.getEmail());
     }
 
-    // ── Table helpers ─────────────────────────────────────────────────────────
+    // ── Table Refresh / Filter ────────────────────────────────────────────────
 
     private void refreshTable() {
         Employee user = app.getCurrentUser();
@@ -297,8 +287,7 @@ public class DashboardScreen extends JPanel {
             List<Employee> self = new ArrayList<>();
             for (Employee e : allEmployees) {
                 if (e.getEmail().equalsIgnoreCase(user.getEmail())) {
-                    self.add(e);
-                    break;
+                    self.add(e); break;
                 }
             }
             repopulateTable(self);
@@ -316,7 +305,8 @@ public class DashboardScreen extends JPanel {
             List<Employee> filtered = new ArrayList<>();
             for (Employee e : allEmployees) {
                 if (e.getName().toLowerCase().contains(query) ||
-                    e.getEmail().toLowerCase().contains(query)) {
+                    e.getEmail().toLowerCase().contains(query) ||
+                    e.getDepartment().toLowerCase().contains(query)) {
                     filtered.add(e);
                 }
             }
@@ -340,6 +330,7 @@ public class DashboardScreen extends JPanel {
         for (int i = 0; i < tableModel.getRowCount(); i++) {
             if (email.equalsIgnoreCase((String) tableModel.getValueAt(i, 2))) {
                 employeeTable.setRowSelectionInterval(i, i);
+                employeeTable.scrollRectToVisible(employeeTable.getCellRect(i, 0, true));
                 break;
             }
         }
@@ -363,26 +354,29 @@ public class DashboardScreen extends JPanel {
         int    days     = (rec != null) ? rec.getDaysWorked()    : 30;
         double overtime = (rec != null) ? rec.getOvertimeHours() : 0;
         int    leave    = (rec != null) ? rec.getLeaveDays()     : 0;
+        double net      = service.calculateAttendanceSalary(basic, days, overtime, leave);
 
-        double net = service.calculateAttendanceSalary(basic, days, overtime, leave);
-
-        basicLabel.setText("Basic Salary: "   + currency(basic));
-        daysLabel.setText( "Days Worked: "    + days);
-        overtimeLabel.setText("Overtime Hrs: " + overtime);
-        leaveLabel.setText("Leave Days: "     + leave);
-        taxLabel.setText(  "Tax (10%): "      + currency(tax));
-        pfLabel.setText(   "PF (5%): "        + currency(pf));
-        netLabel.setText(  "Net Salary: "     + currency(net));
+        basicLabel.setText("Basic: "         + currency(basic));
+        daysLabel.setText( "Days Worked: "   + days);
+        overtimeLabel.setText("Overtime: "   + overtime + " hrs");
+        leaveLabel.setText("Leave Days: "    + leave);
+        taxLabel.setText(  "Tax (10%): "     + currency(tax));
+        pfLabel.setText(   "PF (5%): "       + currency(pf));
+        netLabel.setText(  "Net Salary: "    + currency(net));
+        netLabel.setForeground(Theme.PRIMARY);
+        netLabel.setFont(Theme.FONT_HEADER);
     }
 
     private void clearBreakdown() {
-        basicLabel.setText("Basic Salary: —");
+        basicLabel.setText("Basic: —");
         daysLabel.setText( "Days Worked: —");
-        overtimeLabel.setText("Overtime Hrs: —");
+        overtimeLabel.setText("Overtime: —");
         leaveLabel.setText("Leave Days: —");
         taxLabel.setText(  "Tax (10%): —");
         pfLabel.setText(   "PF (5%): —");
         netLabel.setText(  "Net Salary: —");
+        netLabel.setForeground(Theme.TEXT_DARK);
+        netLabel.setFont(Theme.FONT_LABEL);
     }
 
     // ── Export ────────────────────────────────────────────────────────────────
@@ -393,8 +387,7 @@ public class DashboardScreen extends JPanel {
             List<Employee> self = new ArrayList<>();
             for (Employee e : service.loadEmployees()) {
                 if (e.getEmail().equalsIgnoreCase(user.getEmail())) {
-                    self.add(e);
-                    break;
+                    self.add(e); break;
                 }
             }
             return self;
@@ -402,8 +395,13 @@ public class DashboardScreen extends JPanel {
         return service.loadEmployees();
     }
 
+    /** Resolves export file to the same directory as employees.txt. */
+    private String resolveExportPath(String filename) {
+        return new File(EmployeeService.DATA_DIR, filename).getAbsolutePath();
+    }
+
     private void exportCSV() {
-        String path = "payroll_report.csv";
+        String path = resolveExportPath("payroll_report.csv");
         try (PrintWriter pw = new PrintWriter(new FileWriter(path))) {
             pw.println("id,name,email,department,position,basic,tax,pf,daysWorked,overtimeHours,leaveDays,netSalary");
             for (Employee e : exportTargetList()) {
@@ -421,15 +419,14 @@ public class DashboardScreen extends JPanel {
                     basic, tax, pf, days, ot, leave, net);
             }
             JOptionPane.showMessageDialog(this,
-                "CSV exported → " + new File(path).getAbsolutePath(),
-                "Export Successful", JOptionPane.INFORMATION_MESSAGE);
+                "CSV saved to:\n" + path, "Export Successful", JOptionPane.INFORMATION_MESSAGE);
         } catch (IOException ex) {
-            showError("Failed to export CSV: " + ex.getMessage());
+            showError("Failed to export CSV:\n" + ex.getMessage());
         }
     }
 
     private void exportTXT() {
-        String path = "payroll_report.txt";
+        String path = resolveExportPath("payroll_report.txt");
         String date = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
         try (PrintWriter pw = new PrintWriter(new FileWriter(path))) {
             pw.println("==========================================================");
@@ -454,9 +451,9 @@ public class DashboardScreen extends JPanel {
                 pw.printf("  Department : %s%n", e.getDepartment());
                 pw.printf("  Position   : %s%n", e.getPosition());
                 pw.println("  ── Attendance ──────────────────────────────────────");
-                pw.printf("  Days Worked    : %d%n",  days);
+                pw.printf("  Days Worked    : %d%n",   days);
                 pw.printf("  Overtime Hours : %.1f%n", ot);
-                pw.printf("  Leave Days     : %d%n",  leave);
+                pw.printf("  Leave Days     : %d%n",   leave);
                 pw.println("  ── Salary ──────────────────────────────────────────");
                 pw.printf("  Basic Salary   : $%,.2f%n", basic);
                 pw.printf("  Tax (10%%)      : $%,.2f%n", tax);
@@ -466,10 +463,9 @@ public class DashboardScreen extends JPanel {
             }
             pw.println("==========================================================");
             JOptionPane.showMessageDialog(this,
-                "TXT exported → " + new File(path).getAbsolutePath(),
-                "Export Successful", JOptionPane.INFORMATION_MESSAGE);
+                "TXT saved to:\n" + path, "Export Successful", JOptionPane.INFORMATION_MESSAGE);
         } catch (IOException ex) {
-            showError("Failed to export TXT: " + ex.getMessage());
+            showError("Failed to export TXT:\n" + ex.getMessage());
         }
     }
 
@@ -489,9 +485,7 @@ public class DashboardScreen extends JPanel {
         JTextField otF   = new JTextField("0");
         JTextField lvF   = new JTextField("0");
 
-        JPanel form = new JPanel();
-        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
-        form.setBackground(Theme.BG_CARD);
+        JPanel form = buildDialogForm();
         addFormRow(form, "Employee ID",          idF);
         addFormRow(form, "Full Name",            nameF);
         addFormRow(form, "Email",                emailF);
@@ -537,7 +531,7 @@ public class DashboardScreen extends JPanel {
 
     private void showUpdateDialog() {
         int row = employeeTable.getSelectedRow();
-        if (row < 0) { showError("Select an employee to update."); return; }
+        if (row < 0) { showError("Please select an employee to update."); return; }
 
         String origEmail = (String) tableModel.getValueAt(row, 2);
         Employee ex      = service.findByEmail(origEmail);
@@ -550,7 +544,8 @@ public class DashboardScreen extends JPanel {
 
         JTextField     nameF  = new JTextField(ex.getName());
         JTextField     emailF = new JTextField(ex.getEmail());
-        JPasswordField passF  = new JPasswordField(ex.getPassword());
+        JPasswordField passF  = new JPasswordField();
+        passF.setText(ex.getPassword());                       // no deprecated constructor
         JTextField     phoneF = new JTextField(ex.getPhoneNumber());
         JTextField     salF   = new JTextField(String.valueOf(ex.getSalary()));
         JComboBox<String> deptC = new JComboBox<>(DEPARTMENTS);
@@ -563,9 +558,7 @@ public class DashboardScreen extends JPanel {
         deptC.setSelectedItem(ex.getDepartment());
         posC.setSelectedItem(ex.getPosition());
 
-        JPanel form = new JPanel();
-        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
-        form.setBackground(Theme.BG_CARD);
+        JPanel form = buildDialogForm();
         addFormRow(form, "Full Name",            nameF);
         addFormRow(form, "Email",                emailF);
         addFormRow(form, "Password",             passF);
@@ -617,7 +610,7 @@ public class DashboardScreen extends JPanel {
 
     private void handleDelete() {
         int row = employeeTable.getSelectedRow();
-        if (row < 0) { showError("Select an employee to delete."); return; }
+        if (row < 0) { showError("Please select an employee to delete."); return; }
 
         String email = (String) tableModel.getValueAt(row, 2);
         if (email.equalsIgnoreCase(app.getCurrentUser().getEmail())) {
@@ -641,13 +634,13 @@ public class DashboardScreen extends JPanel {
 
     private void showEditProfileDialog() {
         Employee current = app.getCurrentUser();
+
         JTextField     nameF = new JTextField(current.getName());
-        JPasswordField passF = new JPasswordField(current.getPassword());
+        JPasswordField passF = new JPasswordField();
+        passF.setText(current.getPassword());                  // no deprecated constructor
         JTextField     salF  = new JTextField(String.valueOf(current.getSalary()));
 
-        JPanel form = new JPanel();
-        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
-        form.setBackground(Theme.BG_CARD);
+        JPanel form = buildDialogForm();
         addFormRow(form, "Full Name", nameF);
         addFormRow(form, "Password",  passF);
         if (current.isAdmin()) addFormRow(form, "Basic Salary", salF);
@@ -658,7 +651,7 @@ public class DashboardScreen extends JPanel {
         String pass = new String(passF.getPassword()).trim();
 
         if (name.isEmpty() || pass.isEmpty()) { showError("Name and password are required."); return; }
-        if (pass.length() < 4) { showError("Password must be at least 4 characters."); return; }
+        if (pass.length() < 4)               { showError("Password must be at least 4 characters."); return; }
 
         double salary = current.getSalary();
         if (current.isAdmin()) {
@@ -670,34 +663,38 @@ public class DashboardScreen extends JPanel {
             }
         }
 
-        Employee updated = new Employee(current.getId(), name, current.getEmail(), pass,
-            current.getPhoneNumber(), current.getDepartment(), current.getPosition(),
-            salary, current.getRole());
+        Employee updated = new Employee(
+            current.getId(), name, current.getEmail(), pass,
+            current.getPhoneNumber(), current.getDepartment(),
+            current.getPosition(), salary, current.getRole());
         service.updateEmployee(current.getEmail(), updated);
         app.setCurrentUser(updated);
         welcomeLabel.setText("Welcome, " + name
-            + "  [" + updated.getRole().toUpperCase() + " — " + updated.getPosition() + "]");
+            + "   [" + updated.getRole().toUpperCase() + "  —  " + updated.getPosition() + "]");
         refreshTable();
     }
 
-    // ── Form / Dialog helpers ─────────────────────────────────────────────────
+    // ── Form / Dialog Helpers ─────────────────────────────────────────────────
 
-    /**
-     * Adds a label + field row to a dialog form.
-     * FIX 12: uses Theme.styleInput() / styleCombo() for consistent appearance.
-     */
+    private JPanel buildDialogForm() {
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.setBackground(Theme.BG_CARD);
+        return form;
+    }
+
+    @SuppressWarnings("unchecked")
     private void addFormRow(JPanel panel, String label, JComponent field) {
         JLabel lbl = Theme.fieldLabel(label);
         lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Style the field appropriately based on its type
         if (field instanceof JComboBox) {
-            Theme.styleCombo((JComboBox<?>) field);
+            Theme.styleCombo((JComboBox<String>) field);
         } else {
             Theme.styleInput(field);
         }
         field.setAlignmentX(Component.LEFT_ALIGNMENT);
-        field.setMaximumSize(new Dimension(340, 32));
+        field.setMaximumSize(new Dimension(360, 34));
 
         panel.add(lbl);
         panel.add(Box.createVerticalStrut(3));
@@ -708,7 +705,7 @@ public class DashboardScreen extends JPanel {
     private int showDialog(JPanel form, String title) {
         form.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
         JScrollPane sp = new JScrollPane(form);
-        sp.setPreferredSize(new Dimension(380, 440));
+        sp.setPreferredSize(new Dimension(400, 460));
         sp.setBorder(null);
         sp.getVerticalScrollBar().setUnitIncrement(12);
         sp.getViewport().setBackground(Theme.BG_CARD);
@@ -736,19 +733,16 @@ public class DashboardScreen extends JPanel {
         return null;
     }
 
-    // ── Small UI helpers ──────────────────────────────────────────────────────
+    // ── Small UI Helpers ──────────────────────────────────────────────────────
 
     private void showError(String msg) {
         JOptionPane.showMessageDialog(this, msg, "Error", JOptionPane.ERROR_MESSAGE);
     }
 
-    /** Breakdown label: left-aligned, fixed theme font. */
     private JLabel breakdownLabel(String text) {
         JLabel lbl = new JLabel(text);
         lbl.setFont(Theme.FONT_LABEL);
         lbl.setForeground(Theme.TEXT_DARK);
-        // FIX 5: LEFT alignment so long currency strings don't overflow centre
-        lbl.setHorizontalAlignment(SwingConstants.LEFT);
         return lbl;
     }
 

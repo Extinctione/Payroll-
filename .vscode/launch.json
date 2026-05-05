@@ -1,0 +1,13 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Run Employee Payroll System",
+            "request": "launch",
+            "mainClass": "Main",
+            "projectName": "vs-prog-main",
+            "cwd": "${workspaceFolder}/src"
+        }
+    ]
+}

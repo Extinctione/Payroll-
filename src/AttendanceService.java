@@ -1,13 +1,30 @@
 import java.io.*;
 import java.util.*;
 
+/**
+ * AttendanceService.java
+ * Handles reading and writing attendance records to attendance.txt.
+ *
+ * FILE PATH: Uses the same DATA_DIR as EmployeeService so both files
+ * always live in the same directory — no path split between src/ and bin/.
+ *
+ * Storage format per line (4 comma-separated fields):
+ *   employeeId,daysWorked,overtimeHours,leaveDays
+ */
 public class AttendanceService {
 
-    private static final String FILE_PATH = "attendance.txt";
+    private static final String ATT_FILE = "attendance.txt";
+
+    private static File dataFile() {
+        // Reuse the same directory resolution as EmployeeService for consistency
+        return new File(EmployeeService.DATA_DIR, ATT_FILE);
+    }
+
+    // ── File I/O ──────────────────────────────────────────────────────────────
 
     public List<AttendanceRecord> loadAll() {
         List<AttendanceRecord> list = new ArrayList<>();
-        File file = new File(FILE_PATH);
+        File file = dataFile();
         if (!file.exists()) return list;
         try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
@@ -19,22 +36,28 @@ public class AttendanceService {
                 }
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("[AttendanceService] Read error: " + e.getMessage());
         }
         return list;
     }
 
     public void saveAll(List<AttendanceRecord> records) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(FILE_PATH, false))) {
+        File file = dataFile();
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) parent.mkdirs();
+        try (PrintWriter writer = new PrintWriter(new FileWriter(file, false))) {
             for (AttendanceRecord r : records) {
                 writer.println(r.toFileString());
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.println("[AttendanceService] Write error: " + e.getMessage());
         }
     }
 
+    // ── Lookup ────────────────────────────────────────────────────────────────
+
     public AttendanceRecord findByEmployeeId(String employeeId) {
+        if (employeeId == null) return null;
         for (AttendanceRecord r : loadAll()) {
             if (r.getEmployeeId().equalsIgnoreCase(employeeId)) return r;
         }

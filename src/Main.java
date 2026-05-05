@@ -4,14 +4,13 @@ import java.awt.*;
 /**
  * Main.java — Application entry point and screen router.
  *
- * FIXES:
- * - Added explicit frame.pack() + setMinimumSize after building to let
- *   preferred sizes propagate before the window appears (prevents layout
- *   compression on first show).
- * - Applied UIManager overrides consistently so every child component
- *   inherits the theme colours without manual per-component calls.
- * - setLocationRelativeTo(null) moved after pack() so centering is correct.
- * - CardLayout panel now fills the entire frame via BorderLayout.CENTER.
+ * Sets up the Look-and-Feel, global UIManager overrides,
+ * builds the shared CardLayout frame, and routes between screens.
+ *
+ * Run from the src/ directory:
+ *   cd src
+ *   javac *.java
+ *   java Main
  */
 public class Main {
 
@@ -30,13 +29,12 @@ public class Main {
     private final DashboardScreen    dashboardScreen;
 
     public Main() {
-        // ── Look-and-feel: cross-platform base so theme colours render correctly
-        //    on all OSes (avoids Windows/macOS native chrome overriding colours).
+        // Cross-platform L&F so theme colours render identically on all OSes
         try {
             UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
         } catch (Exception ignored) {}
 
-        // ── Global UIManager overrides (applied BEFORE any component is built)
+        // Global UIManager defaults — applied before any component is built
         UIManager.put("Panel.background",              Theme.BG);
         UIManager.put("OptionPane.background",         Theme.BG);
         UIManager.put("OptionPane.messageForeground",  Theme.TEXT_DARK);
@@ -62,15 +60,18 @@ public class Main {
         UIManager.put("TableHeader.foreground",        Color.WHITE);
         UIManager.put("TableHeader.font",              Theme.FONT_HEADER);
 
-        // ── Build shared service layer
+        // Build the shared service layer first
         EmployeeService service = new EmployeeService();
 
-        // ── Build screens BEFORE creating the frame so preferred sizes are known
+        // Print resolved data path so users can confirm location on startup
+        System.out.println("[Main] Data directory: " + EmployeeService.DATA_DIR.getAbsolutePath());
+
+        // Build screens (preferred sizes are known before frame creation)
         loginScreen        = new LoginScreen(this, service);
         registrationScreen = new RegistrationScreen(this, service);
         dashboardScreen    = new DashboardScreen(this, service);
 
-        // ── Card container
+        // Card container
         cardLayout = new CardLayout();
         mainPanel  = new JPanel(cardLayout);
         mainPanel.setBackground(Theme.BG);
@@ -78,19 +79,14 @@ public class Main {
         mainPanel.add(registrationScreen, REGISTER);
         mainPanel.add(dashboardScreen,    DASHBOARD);
 
-        // ── Frame setup
+        // Frame
         frame = new JFrame("Employee Payroll System");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        // FIX: use BorderLayout so the card panel fills the whole frame
         frame.setLayout(new BorderLayout());
         frame.add(mainPanel, BorderLayout.CENTER);
-
-        // FIX: set a sensible fixed size — avoids layout thrashing on resize
-        frame.setSize(900, 660);
-        frame.setMinimumSize(new Dimension(780, 560));
-
-        // FIX: centre AFTER size is set
-        frame.setLocationRelativeTo(null);
+        frame.setSize(960, 680);
+        frame.setMinimumSize(new Dimension(800, 580));
+        frame.setLocationRelativeTo(null);  // centred after size is known
         frame.setVisible(true);
     }
 
