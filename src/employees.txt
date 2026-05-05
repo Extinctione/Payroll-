@@ -1,2 +1,0 @@
-666,gad,gad@gmail.com,1234,6363778904,IT,Admin,1000000.0,admin
-1111,gad,gadhasiv@gmail.com,1111,1234567899,HR,Admin,100000.0,admin
