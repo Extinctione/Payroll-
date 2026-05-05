@@ -1,0 +1,3 @@
+id,name,email,department,position,basic,tax,pf,daysWorked,overtimeHours,leaveDays,netSalary
+123,gadha siva,gadhasiv@gmail.com,HR,Admin,100000.00,10000.00,5000.00,30,0.0,0,85000.00
+1111,femi,femi@gmail.com,IT,Developer,100000.00,10000.00,5000.00,30,0.0,0,85000.00

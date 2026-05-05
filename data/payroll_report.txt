@@ -1,0 +1,38 @@
+==========================================================
+           EMPLOYEE PAYROLL REPORT
+           Generated: 2026-05-02 14:33
+==========================================================
+
+----------------------------------------------------------
+  ID         : 123
+  Name       : gadha siva
+  Email      : gadhasiv@gmail.com
+  Department : HR
+  Position   : Admin
+  ── Attendance ──────────────────────────────────────
+  Days Worked    : 30
+  Overtime Hours : 0.0
+  Leave Days     : 0
+  ── Salary ──────────────────────────────────────────
+  Basic Salary   : $100,000.00
+  Tax (10%)      : $10,000.00
+  PF  (5%)       : $5,000.00
+  NET SALARY     : $85,000.00
+
+----------------------------------------------------------
+  ID         : 1111
+  Name       : femi
+  Email      : femi@gmail.com
+  Department : IT
+  Position   : Developer
+  ── Attendance ──────────────────────────────────────
+  Days Worked    : 30
+  Overtime Hours : 0.0
+  Leave Days     : 0
+  ── Salary ──────────────────────────────────────────
+  Basic Salary   : $100,000.00
+  Tax (10%)      : $10,000.00
+  PF  (5%)       : $5,000.00
+  NET SALARY     : $85,000.00
+
+==========================================================
